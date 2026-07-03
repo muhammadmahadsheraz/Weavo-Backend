@@ -140,12 +140,12 @@ router.post('/book/:slug', [
       payment: { amount: service.price, status: 'pending', method: 'cash' }
     });
 
-    // Send confirmation email to client
+    // Send confirmation email to client (fire-and-forget)
     if (client.email) {
-      await sendEmailReminder(
+      sendEmailReminder(
         { ...appointment.toObject(), business, service },
         client.email
-      ).catch(() => {}); // don't fail the response if email fails
+      ).catch(() => {});
     }
 
     res.status(201).json({
@@ -154,7 +154,7 @@ router.post('/book/:slug', [
     });
   } catch (error) {
     console.error('Public book POST error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 });
 

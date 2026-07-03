@@ -15,7 +15,9 @@ const getTransporter = () => {
   } else if (process.env.EMAIL_SERVICE) {
     config.service = process.env.EMAIL_SERVICE;
   }
-  return nodemailer.createTransport(config);
+  const t = nodemailer.createTransport(config);
+  t.set('connectionTimeout', 5000);
+  return t;
 };
 
 // Telegram Bot API (Free Alternative to Twilio)
