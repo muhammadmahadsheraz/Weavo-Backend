@@ -19,6 +19,17 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Connect to DB before any routes (critical for serverless)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('DB connection failed:', err.message);
+    res.status(500).json({ message: 'Database connection error' });
+  }
+});
+
 // Routes
 const authRoutes    = require('./routes/authRoutes');
 const businessRoutes = require('./routes/businessRoutes');
@@ -51,12 +62,6 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ message: 'Server error' });
-});
-
-// Connect on first request (serverless-friendly)
-app.use(async (req, res, next) => {
-  await connectDB();
-  next();
 });
 
 // Only listen in non-serverless environments
