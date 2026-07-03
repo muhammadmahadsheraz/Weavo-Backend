@@ -53,9 +53,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Server error' });
 });
 
-// Connect to database and start server
-connectDB().then(() => {
-  app.listen(process.env.PORT || 5000, () => {
-    console.log(`Server running on port ${process.env.PORT || 5000}`);
-  });
+// Connect on first request (serverless-friendly)
+app.use(async (req, res, next) => {
+  await connectDB();
+  next();
 });
+
+// Only listen in non-serverless environments
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
+module.exports = app;

@@ -180,9 +180,9 @@ router.post('/receptionist/:slug', [
 
     const businessContext = { ...business, services };
 
-    const response = await generateReceptionistResponse(req.body.message, businessContext);
+    const { response, collectedData } = await generateReceptionistResponse(req.body.message, businessContext, req.body.history || []);
 
-    res.json({ response, business: { name: business.name } });
+    res.json({ response, collectedData, business: { name: business.name } });
   } catch (error) {
     console.error('Receptionist error:', error);
     res.status(500).json({ message: 'Server error' });

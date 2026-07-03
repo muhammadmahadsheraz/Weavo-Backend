@@ -2,15 +2,20 @@ const nodemailer = require('nodemailer');
 
 // Lazily create transport so missing env vars don't crash the server on startup
 const getTransporter = () => {
-  return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false,
+  const config = {
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD
     }
-  });
+  };
+  if (process.env.EMAIL_HOST) {
+    config.host = process.env.EMAIL_HOST;
+    config.port = parseInt(process.env.EMAIL_PORT) || 587;
+    config.secure = process.env.EMAIL_PORT === '465';
+  } else if (process.env.EMAIL_SERVICE) {
+    config.service = process.env.EMAIL_SERVICE;
+  }
+  return nodemailer.createTransport(config);
 };
 
 // Telegram Bot API (Free Alternative to Twilio)
