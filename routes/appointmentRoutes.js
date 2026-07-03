@@ -177,6 +177,12 @@ router.put('/:id/status', [
     }
 
     appointment.status = req.body.status;
+
+    // Auto-mark payment as paid when appointment is completed
+    if (req.body.status === 'completed') {
+      appointment.payment.status = 'paid';
+    }
+
     await appointment.save();
 
     // Send email reminder when confirmed
