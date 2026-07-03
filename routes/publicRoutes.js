@@ -99,7 +99,11 @@ router.post('/book/:slug', [
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) {
+      console.error('Booking 400 — validation errors:', JSON.stringify(errors.array()));
+      console.error('Booking 400 — body:', JSON.stringify(req.body));
+      return res.status(400).json({ errors: errors.array() });
+    }
 
     const business = await Business.findOne({ slug: req.params.slug, isActive: true });
     if (!business) return res.status(404).json({ message: 'Business not found' });
