@@ -223,7 +223,10 @@ router.put('/:id/status', [
         .populate('business', 'name address phone')
         .populate('service', 'name duration price currency');
       sendGmailReminder(populated, appointment.client.email)
-        .catch(() => sendEmailReminder(populated, appointment.client.email).catch(() => {}));
+        .catch(err => {
+          console.error('sendGmailReminder failed, falling back to SMTP:', err.message);
+          sendEmailReminder(populated, appointment.client.email).catch(() => {});
+        });
     }
 
     res.json(appointment);
