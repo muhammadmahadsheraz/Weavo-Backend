@@ -52,8 +52,9 @@ router.post('/google/auth', protect, [
     const { error, status } = await verifyBusinessOwner(req, req.body.businessId);
     if (error) return res.status(status).json({ message: error });
 
-    const url = getGoogleAuthUrl();
-    res.json({ url, state: req.body.businessId });
+    const state = JSON.stringify({ businessId: req.body.businessId });
+    const url = `${getGoogleAuthUrl()}&state=${encodeURIComponent(state)}`;
+    res.json({ url });
   } catch (error) {
     console.error('Google auth error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -65,10 +66,18 @@ router.post('/google/auth', protect, [
 // @access  Public (redirect-based OAuth)
 router.get('/google/callback', async (req, res) => {
   try {
-    const { code, state } = req.query;
-    if (!code || !state) return res.status(400).json({ message: 'Missing code or state' });
+    const { code, state: stateParam } = req.query;
+    if (!code || !stateParam) return res.status(400).json({ message: 'Missing code or state' });
 
-    await handleGoogleCallback(code, state);
+    let businessId;
+    try {
+      const parsed = JSON.parse(stateParam);
+      businessId = parsed.businessId;
+    } catch {
+      businessId = stateParam;
+    }
+
+    await handleGoogleCallback(code, businessId);
 
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/settings?calendar=connected`);
   } catch (error) {
