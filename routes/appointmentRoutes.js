@@ -200,11 +200,18 @@ router.put('/:id/status', [
       Appointment.findById(appointment._id)
         .populate('business')
         .populate('service')
-        .then(populated => {
+        .then(async populated => {
           if (appointment.status === 'cancelled') {
             syncDeleteAppointment(populated).catch(() => {});
-          } else {
+          } else if (populated.calendarEvents?.length > 0) {
             syncUpdateAppointment(populated, populated.business, populated.service).catch(() => {});
+          } else {
+            const { results } = await syncCreateAppointment(populated, populated.business, populated.service);
+            if (results.length > 0) {
+              await Appointment.findByIdAndUpdate(populated._id, {
+                $push: { calendarEvents: { $each: results } }
+              });
+            }
           }
         })
         .catch(() => {});
