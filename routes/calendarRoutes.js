@@ -79,10 +79,10 @@ router.get('/google/callback', async (req, res) => {
 
     await handleGoogleCallback(code, businessId);
 
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/settings?calendar=connected`);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?status=connected`);
   } catch (error) {
     console.error('Google callback error:', error);
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/settings?calendar=error`);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?status=error`);
   }
 });
 
