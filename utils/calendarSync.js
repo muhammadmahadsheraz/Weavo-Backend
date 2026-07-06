@@ -194,12 +194,24 @@ async function handleGoogleCallback(code, businessId) {
   const calendar = g.calendar({ version: 'v3', auth: oauth2Client });
   const { data: profile } = await calendar.calendarList.list();
 
+  let email = null;
+  try {
+    const gmail = g.gmail({ version: 'v1', auth: oauth2Client });
+    const { data: gmailProfile } = await gmail.users.getProfile({ userId: 'me' });
+    email = gmailProfile.emailAddress;
+  } catch {
+    // fallback: try extracting from id_token if available
+    try {
+      email = tokens.id_token ? JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString()).email : null;
+    } catch {}
+  }
+
   const primaryCalendar = profile.items?.find(c => c.primary) || profile.items?.[0];
 
   const providerData = {
     business: businessId,
     provider: 'google',
-    email: tokens.id_token ? JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString()).email : null,
+    email,
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token,
     tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
@@ -265,8 +277,10 @@ async function sendGmailReminder(appointment, clientEmail) {
     </div>
   `;
 
-  const email = [
-    `From: ${provider.email || 'me'}`,
+  const fromAddress = provider.email || (await gmail.users.getProfile({ userId: 'me' })).data.emailAddress || 'me';
+
+  const raw = [
+    `From: ${fromAddress}`,
     `To: ${clientEmail}`,
     'Subject: Appointment Confirmed',
     'MIME-Version: 1.0',
@@ -277,7 +291,7 @@ async function sendGmailReminder(appointment, clientEmail) {
 
   await gmail.users.messages.send({
     userId: 'me',
-    requestBody: { raw: Buffer.from(email, 'utf-8').toString('base64url') }
+    requestBody: { raw: Buffer.from(raw, 'utf-8').toString('base64url') }
   });
 }
 
