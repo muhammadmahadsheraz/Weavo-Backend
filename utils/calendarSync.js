@@ -1,5 +1,3 @@
-const { google } = require('googleapis');
-const { createClient } = require('webdav');
 const CalendarProvider = require('../models/CalendarProvider');
 
 const SCOPES = ['https://www.googleapis.com/auth/calendar.events'];
@@ -9,8 +7,34 @@ const OUTLOOK_AUTHORITY = 'https://login.microsoftonline.com/common';
 const OUTLOOK_GRAPH = 'https://graph.microsoft.com/v1.0';
 const ICALENDAR_URL = 'https://caldav.icloud.com';
 
+let _google = null;
+function getGoogle() {
+  if (!_google) {
+    try {
+      _google = require('googleapis').google;
+    } catch (e) {
+      return null;
+    }
+  }
+  return _google;
+}
+
+let _createClient = null;
+function getCreateClient() {
+  if (!_createClient) {
+    try {
+      _createClient = require('webdav').createClient;
+    } catch (e) {
+      return null;
+    }
+  }
+  return _createClient;
+}
+
 const getGoogleOAuth2Client = () => {
-  return new google.auth.OAuth2(
+  const g = getGoogle();
+  if (!g) throw new Error('googleapis package not available');
+  return new g.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
@@ -101,7 +125,9 @@ async function createGoogleEvent(appointment, business, service) {
 
   const oauth2Client = getGoogleOAuth2Client();
   oauth2Client.setCredentials({ access_token: providerDoc.accessToken });
-  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  const g = getGoogle();
+  if (!g) return null;
+  const calendar = g.calendar({ version: 'v3', auth: oauth2Client });
   const event = buildEventBody(appointment, business, service);
 
   const res = await calendar.events.insert({
@@ -121,7 +147,9 @@ async function updateGoogleEvent(appointment, business, service) {
 
   const oauth2Client = getGoogleOAuth2Client();
   oauth2Client.setCredentials({ access_token: providerDoc.accessToken });
-  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  const g = getGoogle();
+  if (!g) return null;
+  const calendar = g.calendar({ version: 'v3', auth: oauth2Client });
   const event = buildEventBody(appointment, business, service);
 
   await calendar.events.update({
@@ -142,7 +170,9 @@ async function deleteGoogleEvent(appointment) {
 
   const oauth2Client = getGoogleOAuth2Client();
   oauth2Client.setCredentials({ access_token: providerDoc.accessToken });
-  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  const g = getGoogle();
+  if (!g) return;
+  const calendar = g.calendar({ version: 'v3', auth: oauth2Client });
 
   try {
     await calendar.events.delete({
@@ -247,6 +277,8 @@ async function createAppleEvent(appointment, business, service) {
   const providerDoc = await getValidProvider(business._id, 'apple');
   if (!providerDoc) return null;
 
+  const createClient = getCreateClient();
+  if (!createClient) return null;
   const client = createClient(ICALENDAR_URL, {
     username: providerDoc.email,
     password: providerDoc.applePassword,
@@ -285,6 +317,8 @@ async function deleteAppleEvent(appointment) {
   const providerDoc = await getValidProvider(appointment.business?._id || appointment.business, 'apple');
   if (!providerDoc) return;
 
+  const createClient = getCreateClient();
+  if (!createClient) return;
   const client = createClient(ICALENDAR_URL, {
     username: providerDoc.email,
     password: providerDoc.applePassword,
@@ -394,7 +428,9 @@ async function handleGoogleCallback(code, businessId) {
   const { tokens } = await oauth2Client.getToken(code);
 
   oauth2Client.setCredentials(tokens);
-  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  const g = getGoogle();
+  if (!g) throw new Error('googleapis package not available');
+  const calendar = g.calendar({ version: 'v3', auth: oauth2Client });
   const { data: profile } = await calendar.calendarList.list();
 
   const primaryCalendar = profile.items?.find(c => c.primary) || profile.items?.[0];
@@ -472,6 +508,8 @@ async function handleOutlookCallback(code, businessId) {
 }
 
 async function connectAppleCalendar(businessId, email, password) {
+  const createClient = getCreateClient();
+  if (!createClient) throw new Error('webdav package not available');
   const client = createClient(ICALENDAR_URL, {
     username: email,
     password: password,
