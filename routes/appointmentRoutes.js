@@ -206,11 +206,18 @@ router.put('/:id/status', [
           } else if (populated.calendarEvents?.length > 0) {
             syncUpdateAppointment(populated, populated.business, populated.service).catch(() => {});
           } else {
-            const { results } = await syncCreateAppointment(populated, populated.business, populated.service);
-            if (results.length > 0) {
+            console.log('No calendar events found, creating new event for appointment', populated._id);
+            const syncResult = await syncCreateAppointment(populated, populated.business, populated.service);
+            console.log('syncCreateAppointment result:', JSON.stringify(syncResult));
+            if (syncResult.results?.length > 0) {
               await Appointment.findByIdAndUpdate(populated._id, {
-                $push: { calendarEvents: { $each: results } }
+                $push: { calendarEvents: { $each: syncResult.results } }
               });
+              console.log('Calendar event created and saved for appointment', populated._id);
+            } else if (syncResult.errors?.length > 0) {
+              console.error('Calendar sync errors:', syncResult.errors);
+            } else {
+              console.log('No calendar event created (no provider connected?)');
             }
           }
         })
