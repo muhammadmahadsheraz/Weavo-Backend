@@ -1,6 +1,9 @@
 const CalendarProvider = require('../models/CalendarProvider');
 
-const SCOPES = ['https://www.googleapis.com/auth/calendar.events'];
+const SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar.calendarlist.readonly'
+];
 
 let _google = null;
 function getGoogle() {
