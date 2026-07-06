@@ -5,6 +5,7 @@ const Business = require('../models/Business');
 const Service = require('../models/Service');
 const User = require('../models/User');
 const { sendEmailReminder, sendTelegramReminder } = require('../utils/notifications');
+const { syncCreateAppointment, syncUpdateAppointment, syncDeleteAppointment } = require('../utils/calendarSync');
 
 const router = express.Router();
 
@@ -85,9 +86,17 @@ router.post('/', [
 
     await appointment.save();
 
-    // Schedule reminders
-    const reminderDate = new Date(startDate.getTime() - 24 * 60 * 60 * 1000); // 24 hours before
-    
+    // Sync to connected calendars (fire-and-forget)
+    syncCreateAppointment(appointment, businessDoc, serviceDoc)
+      .then(({ results }) => {
+        if (results.length > 0) {
+          Appointment.findByIdAndUpdate(appointment._id, {
+            $push: { calendarEvents: { $each: results } }
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {});
+
     res.status(201).json(appointment);
   } catch (error) {
     console.error('Create appointment error:', error);
@@ -176,6 +185,7 @@ router.put('/:id/status', [
       return res.status(403).json({ message: 'Not authorized to update this appointment' });
     }
 
+    const prevStatus = appointment.status;
     appointment.status = req.body.status;
 
     // Auto-mark payment as paid when appointment is completed
@@ -184,6 +194,21 @@ router.put('/:id/status', [
     }
 
     await appointment.save();
+
+    // Sync status change to connected calendars
+    if (prevStatus !== appointment.status) {
+      Appointment.findById(appointment._id)
+        .populate('business')
+        .populate('service')
+        .then(populated => {
+          if (appointment.status === 'cancelled') {
+            syncDeleteAppointment(populated).catch(() => {});
+          } else {
+            syncUpdateAppointment(populated, populated.business, populated.service).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
 
     // Send email reminder when confirmed
     if (req.body.status === 'confirmed' && appointment.client?.email) {
@@ -197,6 +222,70 @@ router.put('/:id/status', [
   } catch (error) {
     console.error('Update appointment status error:', error);
     res.status(500).json({ message: 'Server error updating appointment status' });
+  }
+});
+
+// @route   PUT /api/appointments/:id/reschedule
+// @desc    Reschedule an appointment (update date/time/service)
+// @access  Private
+router.put('/:id/reschedule', [
+  body('date').isISO8601().withMessage('Valid date is required'),
+  body('startTime').notEmpty().withMessage('Start time is required'),
+  body('service').optional().notEmpty().withMessage('Service ID is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    let appointment = await Appointment.findById(req.params.id);
+    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+
+    const business = await Business.findById(appointment.business);
+    if (business.owner.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const serviceId = req.body.service || appointment.service;
+    const serviceDoc = await Service.findById(serviceId);
+    if (!serviceDoc) return res.status(404).json({ message: 'Service not found' });
+
+    const [hours, minutes] = req.body.startTime.split(':').map(Number);
+    const startDate = new Date(req.body.date);
+    startDate.setHours(hours, minutes, 0, 0);
+    const endDate = new Date(startDate.getTime() + serviceDoc.duration * 60000);
+    const endTime = endDate.toTimeString().slice(0, 5);
+
+    const conflict = await Appointment.findOne({
+      _id: { $ne: appointment._id },
+      business: appointment.business,
+      staff: appointment.staff || business.owner,
+      date: new Date(req.body.date),
+      status: { $in: ['pending', 'confirmed'] },
+      $or: [
+        { startTime: { $lt: endTime }, endTime: { $gt: req.body.startTime } }
+      ]
+    });
+
+    if (conflict) return res.status(400).json({ message: 'Time slot is already booked' });
+
+    appointment.date = new Date(req.body.date);
+    appointment.startTime = req.body.startTime;
+    appointment.endTime = endTime;
+    if (req.body.service) appointment.service = req.body.service;
+    if (req.body.notes !== undefined) appointment.notes = req.body.notes;
+
+    await appointment.save();
+
+    Appointment.findById(appointment._id)
+      .populate('business')
+      .populate('service')
+      .then(populated => syncUpdateAppointment(populated, populated.business, populated.service).catch(() => {}))
+      .catch(() => {});
+
+    res.json(appointment);
+  } catch (error) {
+    console.error('Reschedule error:', error);
+    res.status(500).json({ message: 'Server error rescheduling appointment' });
   }
 });
 
@@ -216,6 +305,13 @@ router.delete('/:id', async (req, res) => {
     if (business.owner.toString() !== req.user.id) {
       return res.status(403).json({ message: 'Not authorized to delete this appointment' });
     }
+
+    // Delete calendar events before removing appointment
+    Appointment.findById(appointment._id)
+      .populate('business')
+      .populate('service')
+      .then(populated => syncDeleteAppointment(populated).catch(() => {}))
+      .catch(() => {});
 
     await Appointment.findByIdAndDelete(req.params.id);
     res.json({ message: 'Appointment cancelled successfully' });

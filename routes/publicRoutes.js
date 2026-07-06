@@ -5,6 +5,7 @@ const Service  = require('../models/Service');
 const Appointment = require('../models/Appointment');
 const { sendEmailReminder } = require('../utils/notifications');
 const { generateReceptionistResponse } = require('../utils/aiReceptionist');
+const { syncCreateAppointment } = require('../utils/calendarSync');
 
 const router = express.Router();
 
@@ -143,6 +144,17 @@ router.post('/book/:slug', [
       status: 'pending',
       payment: { amount: service.price, status: 'pending', method: 'cash' }
     });
+
+    // Sync to connected calendars (fire-and-forget)
+    syncCreateAppointment(appointment, business, service)
+      .then(({ results }) => {
+        if (results.length > 0) {
+          Appointment.findByIdAndUpdate(appointment._id, {
+            $push: { calendarEvents: { $each: results } }
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {});
 
     // Send confirmation email to client (fire-and-forget)
     if (client.email) {

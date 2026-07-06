@@ -38,6 +38,7 @@ const serviceRoutes  = require('./routes/serviceRoutes');
 const userRoutes     = require('./routes/userRoutes');
 const staffRoutes    = require('./routes/staffRoutes');
 const publicRoutes   = require('./routes/publicRoutes');
+const calendarRoutes = require('./routes/calendarRoutes');
 const { protect }    = require('./middleware/auth');
 
 app.use('/api/auth',         authRoutes);
@@ -47,6 +48,7 @@ app.use('/api/appointments', protect, appointmentRoutes);
 app.use('/api/services',     protect, serviceRoutes);
 app.use('/api/users',        protect, userRoutes);
 app.use('/api/staff',        protect, staffRoutes);
+app.use('/api/calendar',     calendarRoutes);  // auth handled per-route internally
 
 // Health check
 app.get('/api/health', (req, res) => {
