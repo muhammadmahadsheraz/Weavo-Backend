@@ -75,7 +75,7 @@ const appointmentSchema = new mongoose.Schema({
   calendarEvents: [{
     provider: {
       type: String,
-      enum: ['google', 'outlook', 'apple']
+      enum: ['google']
     },
     eventId: {
       type: String

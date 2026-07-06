@@ -8,7 +8,7 @@ const calendarProviderSchema = new mongoose.Schema({
   },
   provider: {
     type: String,
-    enum: ['google', 'outlook', 'apple'],
+    enum: ['google'],
     required: true
   },
   email: {
@@ -25,9 +25,7 @@ const calendarProviderSchema = new mongoose.Schema({
   tokenExpiry: {
     type: Date
   },
-  applePassword: {
-    type: String
-  },
+
   isConnected: {
     type: Boolean,
     default: false
