@@ -5,7 +5,7 @@ const Business = require('../models/Business');
 const Service = require('../models/Service');
 const User = require('../models/User');
 const { sendEmailReminder, sendTelegramReminder } = require('../utils/notifications');
-const { syncCreateAppointment, syncUpdateAppointment, syncDeleteAppointment } = require('../utils/calendarSync');
+const { syncCreateAppointment, syncUpdateAppointment, syncDeleteAppointment, sendGmailReminder } = require('../utils/calendarSync');
 
 const router = express.Router();
 
@@ -217,12 +217,13 @@ router.put('/:id/status', [
         .catch(() => {});
     }
 
-    // Send email reminder when confirmed
+    // Send confirmation email via business owner's connected Google, fallback to SMTP
     if (req.body.status === 'confirmed' && appointment.client?.email) {
       const populated = await Appointment.findById(appointment._id)
         .populate('business', 'name address phone')
         .populate('service', 'name duration price currency');
-      sendEmailReminder(populated, appointment.client.email).catch(() => {});
+      sendGmailReminder(populated, appointment.client.email)
+        .catch(() => sendEmailReminder(populated, appointment.client.email).catch(() => {}));
     }
 
     res.json(appointment);

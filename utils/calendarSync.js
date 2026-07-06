@@ -2,7 +2,8 @@ const CalendarProvider = require('../models/CalendarProvider');
 
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
-  'https://www.googleapis.com/auth/calendar.calendarlist.readonly'
+  'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+  'https://www.googleapis.com/auth/gmail.send'
 ];
 
 let _google = null;
@@ -215,6 +216,68 @@ async function handleGoogleCallback(code, businessId) {
   );
 }
 
+async function sendGmailReminder(appointment, clientEmail) {
+  const { business: businessId, service: serviceId } = appointment;
+  const provider = await CalendarProvider.findOne({
+    business: businessId, provider: 'google', isConnected: true
+  });
+  if (!provider) throw new Error('No Google Calendar connected');
+
+  const oauth2Client = getGoogleOAuth2Client();
+  oauth2Client.setCredentials({
+    access_token: provider.accessToken,
+    refresh_token: provider.refreshToken
+  });
+
+  if (provider.tokenExpiry && new Date() > provider.tokenExpiry) {
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    oauth2Client.setCredentials(credentials);
+    provider.accessToken = credentials.access_token;
+    provider.tokenExpiry = credentials.expiry_date ? new Date(credentials.expiry_date) : null;
+    await provider.save();
+  }
+
+  const g = getGoogle();
+  if (!g) throw new Error('googleapis package not available');
+
+  const gmail = g.gmail({ version: 'v1', auth: oauth2Client });
+
+  const biz = appointment.business;
+  const svc = appointment.service;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #333;">Appointment Confirmed</h2>
+      <p>Your appointment has been confirmed!</p>
+      <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Business:</strong> ${biz.name}</p>
+        <p><strong>Service:</strong> ${svc.name}</p>
+        <p><strong>Date:</strong> ${new Date(appointment.date).toLocaleDateString()}</p>
+        <p><strong>Time:</strong> ${appointment.startTime} - ${appointment.endTime}</p>
+        <p><strong>Duration:</strong> ${svc.duration} minutes</p>
+        <p><strong>Price:</strong> ${svc.price} ${svc.currency || 'USD'}</p>
+      </div>
+      <p>Please arrive 10 minutes before your scheduled time.</p>
+      <p>If you need to reschedule or cancel, please contact us.</p>
+    </div>
+  `;
+
+  const email = [
+    `From: ${provider.email || 'me'}`,
+    `To: ${clientEmail}`,
+    'Subject: Appointment Confirmed',
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    html
+  ].join('\r\n');
+
+  await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw: Buffer.from(email, 'utf-8').toString('base64url') }
+  });
+}
+
 module.exports = {
   syncCreateAppointment,
   syncUpdateAppointment,
@@ -222,5 +285,6 @@ module.exports = {
   getGoogleAuthUrl,
   handleGoogleCallback,
   getValidProvider,
+  sendGmailReminder,
   CalendarProvider
 };
