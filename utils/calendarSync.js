@@ -47,7 +47,7 @@ function buildEventBody(appointment, business, service) {
   };
 
   if (appointment.client?.email) {
-    event.attendees = [{ email: appointment.client.email, displayName: appointment.client.name }];
+    event.attendees = [{ email: appointment.client.email, displayName: appointment.client.name, responseStatus: 'accepted' }];
   }
 
   return event;
@@ -93,7 +93,8 @@ async function createGoogleEvent(appointment, business, service) {
 
   const res = await calendar.events.insert({
     calendarId: providerDoc.selectedCalendarId || 'primary',
-    requestBody: event
+    requestBody: event,
+    sendUpdates: 'none'
   });
 
   return { eventId: res.data.id, provider: 'google', calendarId: res.data.organizer?.email || 'primary' };
@@ -116,7 +117,8 @@ async function updateGoogleEvent(appointment, business, service) {
   await calendar.events.update({
     calendarId: calEvent.calendarId || providerDoc.selectedCalendarId || 'primary',
     eventId: calEvent.eventId,
-    requestBody: event
+    requestBody: event,
+    sendUpdates: 'none'
   });
 
   return calEvent;
@@ -138,7 +140,8 @@ async function deleteGoogleEvent(appointment) {
   try {
     await calendar.events.delete({
       calendarId: calEvent.calendarId || 'primary',
-      eventId: calEvent.eventId
+      eventId: calEvent.eventId,
+      sendUpdates: 'none'
     });
   } catch (err) {
     if (!err.message?.includes('410') && !err.message?.includes('404')) throw err;
