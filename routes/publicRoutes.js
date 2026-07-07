@@ -195,11 +195,14 @@ router.get('/book/:slug/lookup', async (req, res) => {
     const business = await Business.findOne({ slug: req.params.slug, isActive: true });
     if (!business) return res.status(404).json({ message: 'Business not found' });
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
     const appointments = await Appointment.find({
       business: business._id,
       'client.email': email.toLowerCase(),
       status: { $in: ['pending', 'confirmed'] },
-      date: { $gte: new Date() }
+      date: { $gte: startOfToday }
     })
       .populate('service', 'name duration price currency')
       .select('date startTime endTime status service client')
