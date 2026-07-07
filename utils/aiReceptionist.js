@@ -17,14 +17,19 @@ Business Details:
 - Working Hours: ${JSON.stringify(businessContext.workingHours)}
 - Address: ${businessContext.address?.street}, ${businessContext.address?.city}
 
-Your job is to help customers book appointments by collecting details one at a time conversationally.
+You help customers with three things:
+1. BOOKING a new appointment — collect details one at a time conversationally.
+2. CANCELLING an existing appointment — ask for their email, then tell them you'll look up their bookings.
+3. RESCHEDULING an existing appointment — ask for their email, then tell them you'll look up their bookings.
 
-At the END of your response, include a machine-readable block listing any booking info the user has explicitly provided so far. Use this format:
-[DATA]{"service":null,"date":null,"time":null,"name":null,"email":null,"phone":null}[/DATA]
+At the END of your response, include a machine-readable block using this format:
+[DATA]{"action":"book","service":null,"date":null,"time":null,"name":null,"email":null,"phone":null}[/DATA]
 
-Only fill in fields the user has explicitly stated. Set to null if not yet provided. The "service" value must match exactly one of the available service names listed above, or be null.
+Available actions: "book" (new booking), "cancel" (wants to cancel), "reschedule" (wants to reschedule).
+The "service" value must match exactly one of the available service names listed above, or be null.
+Only fill in fields the user has explicitly stated. Set to null if not yet provided.
 
-Your conversational response should be natural and friendly. If some info is still missing, ask for it naturally. If all info is provided, tell the user everything looks ready and they can confirm the booking.`;
+Your conversational response should be natural and friendly. If booking, ask for missing info naturally. If cancelling or rescheduling, ask for their email to look up appointments.`;
 
       const messages = [
         { role: 'system', content: systemPrompt },
@@ -40,7 +45,7 @@ Your conversational response should be natural and friendly. If some info is sti
       const fullContent = completion.choices[0]?.message?.content || '';
 
       const dataMatch = fullContent.match(/\[DATA\]([\s\S]*?)\[\/DATA\]/);
-      let collectedData = { service: null, date: null, time: null, name: null, email: null, phone: null };
+      let collectedData = { action: 'book', service: null, date: null, time: null, name: null, email: null, phone: null };
       if (dataMatch) {
         try {
           collectedData = { ...collectedData, ...JSON.parse(dataMatch[1]) };
@@ -54,7 +59,7 @@ Your conversational response should be natural and friendly. If some info is sti
 
     return {
       response: generateFallbackResponse(userMessage, businessContext),
-      collectedData: { service: null, date: null, time: null, name: null, email: null, phone: null },
+      collectedData: { action: 'book', service: null, date: null, time: null, name: null, email: null, phone: null },
     };
   } catch (error) {
     console.error('=== AI RECEPTIONIST ERROR ===');
@@ -68,13 +73,25 @@ Your conversational response should be natural and friendly. If some info is sti
     console.error('Stack:', error.stack);
     return {
       response: generateFallbackResponse(userMessage, businessContext),
-      collectedData: { service: null, date: null, time: null, name: null, email: null, phone: null },
+      collectedData: { action: 'book', service: null, date: null, time: null, name: null, email: null, phone: null },
     };
   }
 };
 
 const generateFallbackResponse = (userMessage, businessContext) => {
   const message = userMessage.toLowerCase();
+
+  if (message.includes('cancel') || message.includes('cancel') || message.includes('cancel')) {
+    return `I can help you cancel an appointment at ${businessContext.name}!
+
+Please provide the email address you used when booking, and I'll look up your appointments.`;
+  }
+
+  if (message.includes('reschedule') || message.includes('change') || message.includes('move')) {
+    return `I can help you reschedule an appointment at ${businessContext.name}!
+
+Please provide the email address you used when booking, and I'll look up your appointments to find one to reschedule.`;
+  }
 
   if (message.includes('book') || message.includes('appointment') || message.includes('schedule')) {
     return `I can help you book an appointment at ${businessContext.name}!
@@ -108,16 +125,22 @@ ${openDays}
 Would you like to book an appointment?`;
   }
 
+  if (message.includes('manage') || message.includes('lookup') || message.includes('my booking') || message.includes('my appointment')) {
+    return `I can help you manage your existing booking!
+
+Please provide the email address you used when booking, and I'll look up your appointments.`;
+  }
+
   if (message.includes('hello') || message.includes('hi') || message.includes('hey')) {
     return `Hello! I'm the AI receptionist for ${businessContext.name}.
 
-How can I help you today?`;
+I can help you book a new appointment, cancel an existing one, or reschedule. What would you like to do?`;
   }
 
   return `Thank you for your message!
 
 I'm an AI assistant for ${businessContext.name}.
-I can help you book appointments, check our services, or answer questions about our hours.
+I can help you book appointments, cancel or reschedule existing ones, check our services, or answer questions about our hours.
 
 What would you like to do?`;
 };

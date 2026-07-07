@@ -69,7 +69,11 @@ app.use((err, req, res, next) => {
 // Only listen in non-serverless environments
 if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    const { startReminderScheduler } = require('./utils/reminderScheduler');
+    startReminderScheduler();
+  });
 }
 
 module.exports = app;

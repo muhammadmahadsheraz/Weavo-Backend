@@ -184,4 +184,136 @@ router.post('/receptionist/:slug', [
   }
 });
 
+// @route   GET /api/public/book/:slug/lookup
+// @desc    Lookup a customer's upcoming bookings by email
+// @access  Public
+router.get('/book/:slug/lookup', async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    const business = await Business.findOne({ slug: req.params.slug, isActive: true });
+    if (!business) return res.status(404).json({ message: 'Business not found' });
+
+    const appointments = await Appointment.find({
+      business: business._id,
+      'client.email': email.toLowerCase(),
+      status: { $in: ['pending', 'confirmed'] },
+      date: { $gte: new Date() }
+    })
+      .populate('service', 'name duration price currency')
+      .select('date startTime endTime status service client')
+      .sort({ date: 1 })
+      .lean();
+
+    res.json({ appointments });
+  } catch (error) {
+    console.error('Lookup error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/public/book/:slug/cancel
+// @desc    Customer cancels their own appointment
+// @access  Public
+router.post('/book/:slug/cancel', [
+  body('appointmentId').notEmpty().withMessage('Appointment ID is required'),
+  body('email').isEmail().withMessage('Valid email is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const business = await Business.findOne({ slug: req.params.slug, isActive: true });
+    if (!business) return res.status(404).json({ message: 'Business not found' });
+
+    const appointment = await Appointment.findById(req.body.appointmentId);
+    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+
+    if (appointment.business.toString() !== business._id.toString())
+      return res.status(400).json({ message: 'Appointment does not belong to this business' });
+
+    if (appointment.client.email.toLowerCase() !== req.body.email.toLowerCase())
+      return res.status(403).json({ message: 'Email does not match this appointment' });
+
+    if (appointment.status === 'cancelled')
+      return res.status(400).json({ message: 'Appointment is already cancelled' });
+
+    if (appointment.status === 'completed')
+      return res.status(400).json({ message: 'Cannot cancel a completed appointment' });
+
+    appointment.status = 'cancelled';
+    await appointment.save();
+
+    res.json({ message: 'Appointment cancelled successfully' });
+  } catch (error) {
+    console.error('Cancel error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/public/book/:slug/reschedule
+// @desc    Customer reschedules their own appointment
+// @access  Public
+router.post('/book/:slug/reschedule', [
+  body('appointmentId').notEmpty().withMessage('Appointment ID is required'),
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('date').isISO8601().withMessage('Valid date is required'),
+  body('startTime').notEmpty().withMessage('Start time is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const business = await Business.findOne({ slug: req.params.slug, isActive: true });
+    if (!business) return res.status(404).json({ message: 'Business not found' });
+
+    const appointment = await Appointment.findById(req.body.appointmentId).populate('service');
+    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+
+    if (appointment.business.toString() !== business._id.toString())
+      return res.status(400).json({ message: 'Appointment does not belong to this business' });
+
+    if (appointment.client.email.toLowerCase() !== req.body.email.toLowerCase())
+      return res.status(403).json({ message: 'Email does not match this appointment' });
+
+    if (appointment.status === 'cancelled')
+      return res.status(400).json({ message: 'Cannot reschedule a cancelled appointment' });
+
+    if (appointment.status === 'completed')
+      return res.status(400).json({ message: 'Cannot reschedule a completed appointment' });
+
+    const serviceDoc = appointment.service;
+
+    const [hours, minutes] = req.body.startTime.split(':').map(Number);
+    const startDate = new Date(req.body.date);
+    startDate.setHours(hours, minutes, 0, 0);
+    const endDate = new Date(startDate.getTime() + serviceDoc.duration * 60000);
+    const endTime = endDate.toTimeString().slice(0, 5);
+
+    const conflict = await Appointment.findOne({
+      _id: { $ne: appointment._id },
+      business: business._id,
+      staff: appointment.staff || business.owner,
+      date: new Date(req.body.date),
+      status: { $in: ['pending', 'confirmed'] },
+      $or: [
+        { startTime: { $lt: endTime }, endTime: { $gt: req.body.startTime } }
+      ]
+    });
+
+    if (conflict) return res.status(409).json({ message: 'That time slot is no longer available' });
+
+    appointment.date = new Date(req.body.date);
+    appointment.startTime = req.body.startTime;
+    appointment.endTime = endTime;
+    await appointment.save();
+
+    res.json({ message: 'Appointment rescheduled successfully', appointment });
+  } catch (error) {
+    console.error('Reschedule error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

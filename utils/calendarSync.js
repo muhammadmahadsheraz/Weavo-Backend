@@ -220,7 +220,7 @@ async function handleGoogleCallback(code, businessId) {
   );
 }
 
-async function sendGmailReminder(appointment, clientEmail) {
+async function sendGmailReminder(appointment, clientEmail, type = 'confirmation') {
   const { business: businessId, service: serviceId } = appointment;
   const provider = await CalendarProvider.findOne({
     business: businessId, provider: 'google', isConnected: true
@@ -249,10 +249,17 @@ async function sendGmailReminder(appointment, clientEmail) {
   const biz = appointment.business;
   const svc = appointment.service;
 
+  const isReminder = type === 'reminder';
+  const subject = isReminder ? 'Appointment Reminder' : 'Appointment Confirmed';
+  const heading = isReminder ? 'Appointment Reminder' : 'Appointment Confirmed';
+  const bodyText = isReminder
+    ? 'This is a friendly reminder about your upcoming appointment:'
+    : 'Your appointment has been confirmed!';
+
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333;">Appointment Confirmed</h2>
-      <p>Your appointment has been confirmed!</p>
+      <h2 style="color: #333;">${heading}</h2>
+      <p>${bodyText}</p>
       <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
         <p><strong>Business:</strong> ${biz.name}</p>
         <p><strong>Service:</strong> ${svc.name}</p>
@@ -269,7 +276,7 @@ async function sendGmailReminder(appointment, clientEmail) {
   const raw = [
     `From: ${provider.email || 'me'}`,
     `To: ${clientEmail}`,
-    'Subject: Appointment Confirmed',
+    `Subject: ${subject}`,
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=UTF-8',
     '',
